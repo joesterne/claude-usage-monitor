@@ -443,6 +443,7 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 .est .tile{border:1px solid var(--line);border-radius:8px;padding:10px}
 .est .tile .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.est .tile .k{color:var(--muted);font-size:12px}
 .est .tile .s{color:var(--muted);font-size:12px;margin-top:2px;font-variant-numeric:tabular-nums}
+.estmsg{margin-top:10px;padding:8px 10px;border-radius:6px;background:var(--bg);border:1px solid var(--line);font-size:13px}
 .est canvas{width:100%;height:110px;display:block}.est .note{color:var(--muted);font-size:12px;margin-top:6px}
 .hookbar button{background:#d97757;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
 </style></head><body><main>
@@ -463,7 +464,7 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 </section>
 <section id="est" class="card est" hidden><h2>Estimator <label style="font-weight:400">Based on
 <select id="est-basis"><option value="0">last 7 days</option><option value="1">last 30 days</option></select></label></h2>
-<div class="tiles" id="est-tiles"></div><canvas id="est-chart" height="110"></canvas>
+<div class="estmsg" id="est-msg" hidden></div><div class="tiles" id="est-tiles"></div><canvas id="est-chart" height="110"></canvas>
 <div class="note" id="est-note"></div></section>
 <section class="charts">
 <div class="card chart"><h2>Tokens by model</h2><div class="pie"><canvas id="c-model" width="400" height="400"></canvas><ul class="legend" id="l-model"></ul></div></div>
@@ -554,12 +555,18 @@ async function estimate(){if(Date.now()-estAt<10e3)return;estAt=Date.now();
   try{EST=await (await fetch("/api/estimate")).json();drawEst();}catch(e){}}
 function drawEst(){const d=EST;if(!d)return;const box=document.getElementById("est");box.hidden=false;
   const b=d.bases[+document.getElementById("est-basis").value],tiles=document.getElementById("est-tiles");tiles.innerHTML="";
+  const msg=document.getElementById("est-msg"),hd=d.history_days;
+  msg.hidden=!(b.enough_history&&hd<7);
+  msg.textContent=`Your log only goes back ${hd.toFixed(1)} days, so the 7-day and 30-day bases use the same data and show the same numbers. They'll start to differ once you have more than a week of history.`;
+  if(b.enough_history&&hd>=7&&hd<30&&b.window_days===30){msg.hidden=false;
+    msg.textContent=`Your log only goes back ${hd.toFixed(1)} days, so the 30-day basis uses those ${Math.floor(hd)} days.`;}
+  const pace=b.window_days===7?"at your last-7-days pace":"at your last-30-days pace";
   const tile=(k,v,s)=>{const t=document.createElement("div");t.className="tile";
     t.innerHTML='<div class="v"></div><div class="k"></div><div class="s"></div>';
     t.children[0].textContent=v;t.children[1].textContent=k;t.children[2].textContent=s||"";tiles.append(t);};
   if(!b.enough_history){tiles.innerHTML='<div class="limerr">Not enough history yet. Estimates start after a day of usage.</div>';}
   else{const sub=x=>`${big(x.output_tokens)} output · ${big(x.requests)} requests`;
-    tile("Per day",money(b.per_day.cost_usd),sub(b.per_day));
+    tile("Per day, "+pace.replace("at your ","").replace(" pace"," average"),money(b.per_day.cost_usd),sub(b.per_day));
     tile("Next 7 days",money(b.next_7_days.cost_usd),sub(b.next_7_days));
     tile("Next 30 days",money(b.next_30_days.cost_usd),sub(b.next_30_days));
     tile(`All of ${d.month.label}`,money(b.this_month.cost_usd),`${money(d.month.to_date.cost_usd)} so far`);}
@@ -577,7 +584,7 @@ function drawEst(){const d=EST;if(!d)return;const box=document.getElementById("e
   x.textBaseline="bottom";x.fillText(new Date(d.daily[0].date+"T12:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}),0,H);
   x.textAlign="right";x.fillText("Today",W,H);
   document.getElementById("est-note").textContent=(b.enough_history?`Estimated API cost per day, last 30 days. Dashed line: average per day over the ${b.label.toLowerCase()}`
-    +(b.covered_days<b.window_days?` (only ${b.covered_days.toFixed(1)} days of history so far)`:"")+". ":"")
+    +". ":"")
     +"Estimates assume you keep the same pace and use API list prices.";}
 document.getElementById("est-basis").onchange=drawEst;window.addEventListener("resize",drawEst);
 async function limits(force){
@@ -595,7 +602,8 @@ async function limits(force){
   err.hidden=!d.error;err.textContent=d.error||"";
   if(!d.limits.length&&!d.error){err.hidden=false;err.textContent="No limits to show.";}}catch(e){}}
 limits(false);setInterval(()=>limits(false),60e3);
-document.getElementById("range").onchange=connect;connect();
+document.getElementById("range").onchange=()=>{const v=document.getElementById("range").value;
+  if(v==="168"||v===""){document.getElementById("est-basis").value=v==="168"?"0":"1";drawEst();}connect();};connect();
 setInterval(connect,5*60e3); // refresh the time window now and then
 </script></body></html>
 """
