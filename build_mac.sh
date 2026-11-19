@@ -26,7 +26,7 @@ trap 'rm -rf "$WORK"' EXIT
 pyinstaller --noconfirm --clean --windowed \
   --name "$APP" \
   --osx-bundle-identifier com.local.claude-usage-monitor \
-  --hidden-import webview.platforms.cocoa --hidden-import limits \
+  --hidden-import webview.platforms.cocoa --hidden-import limits --hidden-import estimator \
   --distpath "$WORK/dist" --workpath "$WORK/build" --specpath "$WORK" \
   app.py
 

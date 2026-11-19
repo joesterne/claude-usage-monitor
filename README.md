@@ -20,6 +20,7 @@ logs every event to SQLite, and shows a live dashboard with pie charts.
 |---|---|
 | `app.py` | Standalone app entry point: starts the server, imports past Claude Code usage, opens the dashboard in its own window. Also acts as the hook (`--hook`). |
 | `build_mac.sh` | Builds `Claude Usage Monitor.app` with PyInstaller. |
+| `estimator.py` | Projects upcoming usage from the last 7 and 30 days. |
 | `limits.py` | Reads your plan limits (5-hour session, weekly) for the dashboard. |
 | `usage_monitor.py` | The server: HTTP endpoint, SQLite logging, dashboard. Also has `send` and `demo` commands. |
 | `claude_code_hook.py` | A Claude Code hook that reads new usage from the session transcript and posts it to the monitor. |
@@ -205,6 +206,26 @@ python3 usage_monitor.py send --model claude-sonnet-5-5 --input 800 --output 200
 - **Refresh** re-scans your Claude Code transcripts for anything the hook missed
   (for example sessions that ran while the monitor was closed) and reloads the charts.
 
+## Estimator
+
+The **Estimator** panel projects your usage from your recent pace. Pick a
+basis, the last 7 days or the last 30 days, and it shows:
+
+- your average per day (estimated cost, output tokens, requests),
+- a projection for the next 7 days and the next 30 days,
+- where this calendar month will end up (what you've used so far, plus the
+  rest of the month at that pace),
+- a bar chart of estimated cost per day for the last 30 days, with the
+  average as a dashed line.
+
+If the log covers less than the chosen window (a new install), the pace is
+taken over the days you do have, and the panel says so. It needs at least a
+day of history. Costs are at API list prices, like the rest of the dashboard.
+
+The Plan limits panel uses the same idea for your limits: from how much of a
+window you've used and how long it has run, it says what you're on pace for by
+the reset, or roughly when you'd hit the limit.
+
 ## Plan limits
 
 The **Plan limits** panel at the top of the dashboard shows how much of your
@@ -256,6 +277,7 @@ Table `usage_events` columns: `received_at`, `event_time`, `source`,
 | POST | `/usage` | Log one event or a list |
 | GET | `/api/summary?since=ISO8601` | JSON totals, per-model breakdown, recent events |
 | GET | `/events?since=ISO8601` | Live summary stream (Server-Sent Events) |
+| GET | `/api/estimate` | Pace per day and projections from the last 7 and 30 days |
 | GET | `/api/limits` | Plan limits for the panel (`?force=1` skips the one-minute cache) |
 | GET | `/health` | `{"ok": true}` |
 | POST | `/api/refresh` | Re-scan Claude Code transcripts for new usage (the dashboard's Refresh button) |

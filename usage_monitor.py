@@ -322,6 +322,9 @@ class Handler(BaseHTTPRequestHandler):
             self._stream(params.get("since"))
         elif path == "/api/hook":
             self._send(200, json.dumps({"status": hook_status(self.hook_command)}))
+        elif path == "/api/estimate":
+            import estimator
+            self._send(200, json.dumps(estimator.estimate(self.store)))
         elif path == "/api/limits":
             import limits
             self._send(200, json.dumps(limits.get(self.store, force=params.get("force") == "1")))
@@ -435,6 +438,12 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 .track{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
 .fill{height:100%;border-radius:4px;background:#2e9e5b;transition:width .4s}.fill.warn{background:#c9a227}.fill.hot{background:#c0392b}
 .limerr{color:var(--muted);font-size:13px}
+.est{margin-bottom:10px}.est h2{font-size:14px;margin:0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.est .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.est .tile{border:1px solid var(--line);border-radius:8px;padding:10px}
+.est .tile .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}.est .tile .k{color:var(--muted);font-size:12px}
+.est .tile .s{color:var(--muted);font-size:12px;margin-top:2px;font-variant-numeric:tabular-nums}
+.est canvas{width:100%;height:110px;display:block}.est .note{color:var(--muted);font-size:12px;margin-top:6px}
 .hookbar button{background:#d97757;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
 </style></head><body><main>
 <header><h1><span id="dot" class="dot"></span>Claude Usage Monitor</h1>
@@ -452,6 +461,10 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 <div class="card stat"><div class="v" id="s-cache">0</div><div class="k">Cache read / write</div></div>
 <div class="card stat"><div class="v" id="s-cost">$0.00</div><div class="k">Est. cost (API prices)</div></div>
 </section>
+<section id="est" class="card est" hidden><h2>Estimator <label style="font-weight:400">Based on
+<select id="est-basis"><option value="0">last 7 days</option><option value="1">last 30 days</option></select></label></h2>
+<div class="tiles" id="est-tiles"></div><canvas id="est-chart" height="110"></canvas>
+<div class="note" id="est-note"></div></section>
 <section class="charts">
 <div class="card chart"><h2>Tokens by model</h2><div class="pie"><canvas id="c-model" width="400" height="400"></canvas><ul class="legend" id="l-model"></ul></div></div>
 <div class="card chart"><h2>Tokens by type</h2><div class="pie"><canvas id="c-type" width="400" height="400"></canvas><ul class="legend" id="l-type"></ul></div></div>
@@ -492,6 +505,7 @@ function render(d){
     {label:"Cache write",v:t.cache_creation_input_tokens},{label:"Cache read",v:t.cache_read_input_tokens}],fmt);
   pie("c-cost","l-cost",d.by_model.map(m=>({label:short(m.model),v:m.cost_usd||0})),usd);
   const tb=document.getElementById("recent");tb.innerHTML="";
+  estimate();
   if(!d.recent.length){tb.innerHTML='<tr><td colspan="7" class="empty">Waiting for usage events…</td></tr>';}
   d.recent.forEach(r=>{const tr=document.createElement("tr");
     [when(r.received_at),short(r.model),fmt(r.input_tokens),fmt(r.output_tokens),
@@ -526,6 +540,46 @@ function resetText(t){if(!t)return"";const d=new Date(t),m=Math.round((d-Date.no
   const at=d.toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"});
   if(m<=0)return"Resets now";if(m<60)return`Resets in ${m} min (${at})`;
   if(m<1440)return`Resets in ${Math.floor(m/60)} hr ${m%60} min (${at})`;return`Resets ${at}`;}
+const WINDOW_H={five_hour:5};
+function pace(l){if(!l.resets_at||l.percent<=0)return"";const win=(WINDOW_H[l.key]||(l.key.startsWith("seven_day")?168:0))*3600e3;
+  if(!win)return"";const left=new Date(l.resets_at)-Date.now(),el=win-left;if(left<=0||el<win*0.05)return"";
+  const rate=l.percent/el,proj=l.percent+rate*left;if(l.percent>=100)return"Limit reached";
+  if(proj<100)return`On pace for about ${Math.round(proj)}% by reset`;
+  const hit=new Date(Date.now()+(100-l.percent)/rate);
+  return"At this pace you'll hit it around "+hit.toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"});}
+let EST=null,estAt=0;
+const big=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1)+"M":n>=1e3?(n/1e3).toFixed(n>=1e4?0:1)+"k":String(Math.round(n));
+const money=n=>"$"+(n>=100?Math.round(n).toLocaleString():n.toFixed(2));
+async function estimate(){if(Date.now()-estAt<10e3)return;estAt=Date.now();
+  try{EST=await (await fetch("/api/estimate")).json();drawEst();}catch(e){}}
+function drawEst(){const d=EST;if(!d)return;const box=document.getElementById("est");box.hidden=false;
+  const b=d.bases[+document.getElementById("est-basis").value],tiles=document.getElementById("est-tiles");tiles.innerHTML="";
+  const tile=(k,v,s)=>{const t=document.createElement("div");t.className="tile";
+    t.innerHTML='<div class="v"></div><div class="k"></div><div class="s"></div>';
+    t.children[0].textContent=v;t.children[1].textContent=k;t.children[2].textContent=s||"";tiles.append(t);};
+  if(!b.enough_history){tiles.innerHTML='<div class="limerr">Not enough history yet. Estimates start after a day of usage.</div>';}
+  else{const sub=x=>`${big(x.output_tokens)} output · ${big(x.requests)} requests`;
+    tile("Per day",money(b.per_day.cost_usd),sub(b.per_day));
+    tile("Next 7 days",money(b.next_7_days.cost_usd),sub(b.next_7_days));
+    tile("Next 30 days",money(b.next_30_days.cost_usd),sub(b.next_30_days));
+    tile(`All of ${d.month.label}`,money(b.this_month.cost_usd),`${money(d.month.to_date.cost_usd)} so far`);}
+  const c=document.getElementById("est-chart"),dpr=window.devicePixelRatio||1;
+  c.width=Math.round(c.clientWidth*dpr);c.height=Math.round(110*dpr);const x=c.getContext("2d");x.scale(dpr,dpr);
+  const W=c.clientWidth,H=110;x.clearRect(0,0,W,H);
+  const vals=d.daily.map(v=>v.cost_usd),avg=b.enough_history?b.per_day.cost_usd:0,mx=Math.max(avg,...vals)||1;
+  const bw=W/vals.length,muted=getComputedStyle(document.body).getPropertyValue("--muted")||"#888";
+  const winStart=vals.length-b.window_days;
+  vals.forEach((v,i)=>{const h=(H-22)*v/mx;x.fillStyle=i>=winStart?COLORS[1]:"rgba(127,127,127,.35)";
+    x.fillRect(i*bw+1,H-16-h,Math.max(1,bw-2),Math.max(h,v>0?2:0));});
+  if(avg){const y=H-16-(H-22)*avg/mx;x.strokeStyle=COLORS[0];x.lineWidth=1.5;x.setLineDash([5,4]);
+    x.beginPath();x.moveTo(0,y);x.lineTo(W,y);x.stroke();x.setLineDash([]);}
+  x.fillStyle=muted;x.font="11px -apple-system,sans-serif";x.textAlign="left";
+  x.textBaseline="bottom";x.fillText(new Date(d.daily[0].date+"T12:00").toLocaleDateString(undefined,{month:"short",day:"numeric"}),0,H);
+  x.textAlign="right";x.fillText("Today",W,H);
+  document.getElementById("est-note").textContent=(b.enough_history?`Estimated API cost per day, last 30 days. Dashed line: average per day over the ${b.label.toLowerCase()}`
+    +(b.covered_days<b.window_days?` (only ${b.covered_days.toFixed(1)} days of history so far)`:"")+". ":"")
+    +"Estimates assume you keep the same pace and use API list prices.";}
+document.getElementById("est-basis").onchange=drawEst;window.addEventListener("resize",drawEst);
 async function limits(force){
   try{const r=await fetch("/api/limits"+(force?"?force=1":""));const d=await r.json();
   const box=document.getElementById("limits"),bars=document.getElementById("lim-bars"),err=document.getElementById("lim-err");
@@ -536,7 +590,7 @@ async function limits(force){
     const b=document.createElement("span");b.className="pct";b.textContent=Math.round(p)+"% used";top.append(a,b);
     const tr=document.createElement("div");tr.className="track";const f=document.createElement("div");
     f.className="fill"+(p>=90?" hot":p>=70?" warn":"");f.style.width=Math.min(100,p)+"%";tr.append(f);
-    const sub=document.createElement("div");sub.className="sub";sub.textContent=[l.detail,resetText(l.resets_at)].filter(Boolean).join(" · ");
+    const sub=document.createElement("div");sub.className="sub";sub.textContent=[l.detail,resetText(l.resets_at),pace(l)].filter(Boolean).join(" · ");
     div.append(top,tr,sub);bars.append(div);});
   err.hidden=!d.error;err.textContent=d.error||"";
   if(!d.limits.length&&!d.error){err.hidden=false;err.textContent="No limits to show.";}}catch(e){}}
