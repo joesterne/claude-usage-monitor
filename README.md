@@ -191,6 +191,8 @@ python3 usage_monitor.py send --model claude-sonnet-5-5 --input 800 --output 200
 - The 15 latest events.
 - A range picker: last hour, 24 hours, 7 days, or all time.
 - The green dot means the live connection is up.
+- **Refresh** re-scans your Claude Code transcripts for anything the hook missed
+  (for example sessions that ran while the monitor was closed) and reloads the charts.
 
 ## About the cost number
 
@@ -220,6 +222,7 @@ Table `usage_events` columns: `received_at`, `event_time`, `source`,
 | GET | `/api/summary?since=ISO8601` | JSON totals, per-model breakdown, recent events |
 | GET | `/events?since=ISO8601` | Live summary stream (Server-Sent Events) |
 | GET | `/health` | `{"ok": true}` |
+| POST | `/api/refresh` | Re-scan Claude Code transcripts for new usage (the dashboard's Refresh button) |
 
 The server listens on `127.0.0.1` only, so nothing else on your network can reach it.
 

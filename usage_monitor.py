@@ -328,6 +328,18 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, '{"error": "not found"}')
 
     def do_POST(self):
+        if self.path.split("?")[0] == "/api/refresh":
+            # Re-scan Claude Code transcripts for anything the hook missed,
+            # then let the dashboard reload. Same header guard as /api/hook.
+            if self.headers.get("X-Usage-Monitor") != "1":
+                return self._send(403, '{"error": "forbidden"}')
+            try:
+                import claude_code_hook
+                host, port = self.server.server_address[:2]
+                n = claude_code_hook.backfill(url=f"http://{host}:{port}/usage")
+                return self._send(200, json.dumps({"imported": n}))
+            except Exception as ex:
+                return self._send(500, json.dumps({"error": str(ex)}))
         if self.path.split("?")[0] == "/api/hook":
             # custom header forces a CORS preflight, so other websites can't trigger this
             if self.headers.get("X-Usage-Monitor") != "1":
@@ -409,12 +421,16 @@ canvas{width:200px;height:200px}.legend{list-style:none;margin:0;padding:0;font-
 th,td{text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
 th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th{color:var(--muted);font-weight:500}
 .empty{color:var(--muted);padding:30px 0;text-align:center}
+.tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ghost{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer}
+.ghost:disabled{opacity:.6;cursor:default}
 .hookbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}
 .hookbar button{background:#d97757;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
 </style></head><body><main>
 <header><h1><span id="dot" class="dot"></span>Claude Usage Monitor</h1>
+<div class="tools"><button id="refresh" class="ghost" title="Import any new Claude Code usage and reload the charts">&#x21bb; Refresh</button>
 <label>Range <select id="range"><option value="">All time</option><option value="1">Last hour</option>
-<option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option></select></label></header>
+<option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option></select></label></div></header>
 <div id="hookbar" class="card hookbar" hidden><span id="hooktext"></span>
 <button id="hookbtn">Connect Claude Code</button></div>
 <section class="stats">
@@ -487,6 +503,11 @@ function alertOk(){const b=document.getElementById("hookbar");b.hidden=false;
   document.getElementById("hooktext").textContent="Connected. New Claude Code sessions will report usage here.";
   setTimeout(()=>{b.hidden=true},6000);}
 document.getElementById("hookbtn").onclick=()=>hook(true);hook(false);
+document.getElementById("refresh").onclick=async()=>{
+  const b=document.getElementById("refresh");b.disabled=true;b.textContent="Refreshing…";let msg="↻ Refresh";
+  try{const r=await fetch("/api/refresh",{method:"POST",headers:{"X-Usage-Monitor":"1"}});const j=await r.json();
+    if(r.ok){msg=j.imported?`↻ Refreshed (+${j.imported})`:"↻ Up to date";}else{msg="↻ Refresh failed";}}catch(e){msg="↻ Refresh failed";}
+  connect();hook(false);b.textContent=msg;setTimeout(()=>{b.textContent="↻ Refresh";b.disabled=false;},2500);};
 document.getElementById("range").onchange=connect;connect();
 setInterval(connect,5*60e3); // refresh the time window now and then
 </script></body></html>
