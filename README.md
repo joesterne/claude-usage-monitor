@@ -63,12 +63,18 @@ Build it once:
 
 ```bash
 cd claude-usage-monitor
-./build_mac.sh
-cp -R "dist/Claude Usage Monitor.app" /Applications/
+./build_mac.sh --install
 ```
 
+That builds the app, signs it, and puts it in `/Applications` (quitting the
+running copy first). Plain `./build_mac.sh` only builds into `dist/`.
+
 The build needs `python3` on the machine. The finished app bundles its own
-Python, so it runs without it.
+Python, so it runs without it. The build runs in a temporary folder, so it
+also works when the repo sits in an iCloud-synced folder like Documents
+(iCloud metadata would otherwise stop the app from being signed). To copy a
+build by hand, use `ditto --noextattr` rather than `cp -R`, which can carry
+that metadata along.
 
 Then double-click **Claude Usage Monitor** in Applications. It:
 
