@@ -1,0 +1,11 @@
+# build outputs
+build/
+dist/
+.build-venv/
+*.spec
+__pycache__/
+*.pyc
+# personal usage data
+*.db
+*.db-journal
+.DS_Store
