@@ -3,7 +3,7 @@
 Claude Usage Monitor - a tiny local server that receives Claude usage events,
 logs them to SQLite, and shows a live-updating dashboard with pie charts.
 
-Standard library only (Python 3.8+). No pip install needed.
+Standard library only (Python 3.9+). Settings come from .env (see .env.example). No pip install needed.
 
     python usage_monitor.py                 # start server on http://127.0.0.1:8765
     python usage_monitor.py --port 9000     # different port
@@ -36,6 +36,8 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import env  # noqa: F401  (loads .env settings into os.environ)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765

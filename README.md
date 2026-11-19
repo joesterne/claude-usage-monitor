@@ -5,7 +5,7 @@ What it says on the tin, live monitoring of token usage.
 A small local tool that receives Claude usage (tokens, model, estimated cost),
 logs every event to SQLite, and shows a live dashboard with pie charts.
 
-- **No dependencies.** Python 3.8+ standard library only. No `pip install`.
+- **No dependencies.** Python 3.9+ standard library only. No `pip install` to run it (the Mac app build uses PyInstaller).
 - **Push, not poll.** Claude Code (or your own code) sends usage to the monitor
   over HTTP on `localhost`. Nothing leaves your machine.
 - **Real time.** The dashboard updates the moment an event arrives (Server-Sent Events).
@@ -21,13 +21,48 @@ logs every event to SQLite, and shows a live dashboard with pie charts.
 | `build_mac.sh` | Builds `Claude Usage Monitor.app` with PyInstaller. |
 | `usage_monitor.py` | The server: HTTP endpoint, SQLite logging, dashboard. Also has `send` and `demo` commands. |
 | `claude_code_hook.py` | A Claude Code hook that reads new usage from the session transcript and posts it to the monitor. |
+| `env.py` | Loads settings from a `.env` file. |
+| `.env.example` | Template for your `.env` (copy it, then edit). |
+
+## Get the code
+
+```bash
+git clone https://github.com/joesterne/claude-usage-monitor.git
+cd claude-usage-monitor
+cp .env.example .env      # optional: only needed to change the defaults
+```
+
+## Configuration (.env)
+
+All settings live in a `.env` file, which is git-ignored, so your local paths
+and ports never get committed. `.env.example` lists every setting with its
+default:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `USAGE_MONITOR_HOST` | `127.0.0.1` | Address the server listens on. Keep it local. |
+| `USAGE_MONITOR_PORT` | `8765` | Port for the server and dashboard. |
+| `USAGE_MONITOR_DB` | `usage.db` next to the script; the app uses `~/Library/Application Support/Claude Usage Monitor/usage.db` | SQLite file. |
+| `USAGE_MONITOR_URL` | `http://HOST:PORT/usage` | Where the hook sends usage. |
+| `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Transcripts the app imports on launch. |
+| `USAGE_MONITOR_VERBOSE` | empty | Set to `1` to log every request. |
+
+Where `.env` is read from, first match wins per setting:
+
+1. the file named in `USAGE_MONITOR_ENV`, if you set it
+2. `.env` next to the scripts (running from source)
+3. `~/Library/Application Support/Claude Usage Monitor/.env` (the Mac app)
+4. `~/.claude-usage-monitor/.env`
+
+Real environment variables always win over `.env`. The tool needs no API keys
+or other secrets.
 
 ## Standalone Mac app (recommended)
 
 Build it once:
 
 ```bash
-cd ~/Documents/"Claude Usage Bot"
+cd claude-usage-monitor
 ./build_mac.sh
 cp -R "dist/Claude Usage Monitor.app" /Applications/
 ```
@@ -59,7 +94,7 @@ The sections below cover running it as a plain Python script instead.
 ## 1. Start the monitor
 
 ```bash
-cd ~/Documents/"Claude Usage Bot"
+cd claude-usage-monitor
 python3 usage_monitor.py
 ```
 
@@ -71,30 +106,30 @@ Try it with fake data (in a second terminal):
 python3 usage_monitor.py demo
 ```
 
-Options: `--port 9000`, `--db /path/to/usage.db`, `--host 127.0.0.1`
-(or the env vars `USAGE_MONITOR_PORT`, `USAGE_MONITOR_DB`, `USAGE_MONITOR_HOST`).
+Options: `--port 9000`, `--db /path/to/usage.db`, `--host 127.0.0.1`. These
+override the `.env` settings (see Configuration).
 
 ## 2. Connect Claude Code
 
 Claude Code writes every assistant message, with its `usage` block, to a session
 transcript. The hook reads only the new lines each time it runs and posts them
 to the monitor. Add this to `~/.claude/settings.json` (merge it into any
-`hooks` you already have, and fix the path if you put the files elsewhere):
+`hooks` you already have, and replace `/path/to` with where you cloned the repo):
 
 ```json
 {
   "hooks": {
     "PostToolUse": [
       { "matcher": "*", "hooks": [ { "type": "command",
-        "command": "python3 \"$HOME/Documents/Claude Usage Bot/claude_code_hook.py\"" } ] }
+        "command": "python3 \"/path/to/claude-usage-monitor/claude_code_hook.py\"" } ] }
     ],
     "Stop": [
       { "hooks": [ { "type": "command",
-        "command": "python3 \"$HOME/Documents/Claude Usage Bot/claude_code_hook.py\"" } ] }
+        "command": "python3 \"/path/to/claude-usage-monitor/claude_code_hook.py\"" } ] }
     ],
     "SubagentStop": [
       { "hooks": [ { "type": "command",
-        "command": "python3 \"$HOME/Documents/Claude Usage Bot/claude_code_hook.py\"" } ] }
+        "command": "python3 \"/path/to/claude-usage-monitor/claude_code_hook.py\"" } ] }
     ]
   }
 }
@@ -187,3 +222,7 @@ Table `usage_events` columns: `received_at`, `event_time`, `source`,
 | GET | `/health` | `{"ok": true}` |
 
 The server listens on `127.0.0.1` only, so nothing else on your network can reach it.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

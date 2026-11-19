@@ -23,11 +23,12 @@ import threading
 import urllib.request
 import webbrowser
 
+import env  # noqa: F401  (loads .env settings into os.environ)
 import claude_code_hook
 import usage_monitor
 
 APP_NAME = "Claude Usage Monitor"
-HOST = "127.0.0.1"
+HOST = os.environ.get("USAGE_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("USAGE_MONITOR_PORT", usage_monitor.DEFAULT_PORT))
 URL = f"http://{HOST}:{PORT}"
 
@@ -77,7 +78,7 @@ def main():
         open_window()
         return
 
-    db = os.path.join(data_dir(), "usage.db")
+    db = os.environ.get("USAGE_MONITOR_DB") or os.path.join(data_dir(), "usage.db")
     if not os.path.exists(db):
         # fresh database: forget what the hook already sent elsewhere, so the
         # backfill below imports full history into this one

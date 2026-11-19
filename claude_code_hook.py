@@ -13,8 +13,9 @@ It remembers how far it has read in each transcript (in
 ~/.claude-usage-monitor/offsets.json), so every run only sends what is new.
 It never blocks Claude Code: on any error it exits 0 quietly.
 
-Env vars:
-  USAGE_MONITOR_URL   default http://127.0.0.1:8765/usage
+Settings (.env or environment):
+  USAGE_MONITOR_URL     default http://127.0.0.1:8765/usage
+  CLAUDE_PROJECTS_DIR   default ~/.claude/projects (used by backfill)
 """
 
 import json
@@ -22,7 +23,10 @@ import os
 import sys
 import urllib.request
 
-URL = os.environ.get("USAGE_MONITOR_URL", "http://127.0.0.1:8765/usage")
+import env  # noqa: F401  (loads .env settings into os.environ)
+
+URL = os.environ.get("USAGE_MONITOR_URL") or "http://{}:{}/usage".format(
+    os.environ.get("USAGE_MONITOR_HOST", "127.0.0.1"), os.environ.get("USAGE_MONITOR_PORT", "8765"))
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".claude-usage-monitor")
 STATE_FILE = os.path.join(STATE_DIR, "offsets.json")
 
@@ -107,7 +111,8 @@ def backfill(url=None, projects_dir=None):
     """Catch up on every Claude Code transcript on this machine, e.g. sessions
     that ran while the monitor was closed. Safe to repeat: offsets skip what was
     already sent and the server de-duplicates by message id."""
-    root = projects_dir or os.path.join(os.path.expanduser("~"), ".claude", "projects")
+    root = os.path.expanduser(projects_dir or os.environ.get("CLAUDE_PROJECTS_DIR")
+                              or os.path.join("~", ".claude", "projects"))
     paths = []
     for dirpath, _, files in os.walk(root):
         paths += [os.path.join(dirpath, f) for f in files if f.endswith(".jsonl")]
