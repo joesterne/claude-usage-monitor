@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2925"/>
+      <stop offset="1" stop-color="#141311"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.5">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS-style rounded square, inset per Apple's icon grid -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#glow)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#shine)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="3"/>
+  <!-- gauge track: 270 degrees, open at the bottom; r=250, circumference 1570.8, arc 1178.1 -->
+  <g transform="rotate(135 512 512)" fill="none" stroke-width="64">
+    <circle cx="512" cy="512" r="250" stroke="#ffffff" stroke-opacity="0.09" stroke-dasharray="1178.1 1570.8" stroke-linecap="round"/>
+    <!-- usage segments (share of the 270-degree arc), with small gaps -->
+    <circle cx="512" cy="512" r="250" stroke="#d97757" stroke-dasharray="430 1140.8" stroke-dashoffset="0" stroke-linecap="round"/>
+    <circle cx="512" cy="512" r="250" stroke="#6a9bcc" stroke-dasharray="230 1340.8" stroke-dashoffset="-470" stroke-linecap="round"/>
+    <circle cx="512" cy="512" r="250" stroke="#c9a227" stroke-dasharray="140 1430.8" stroke-dashoffset="-740" stroke-linecap="round"/>
+  </g>
+  <!-- needle pointing at the current level (end of the coloured arc) -->
+  <line x1="512" y1="512" x2="672" y2="420" stroke="#f0eee9" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="44" fill="#f0eee9"/>
+  <circle cx="512" cy="512" r="18" fill="#d97757"/>
+  <!-- live pulse in the open bottom of the gauge -->
+  <polyline points="372,742 446,742 476,700 512,790 548,722 572,742 652,742" fill="none" stroke="#f0eee9" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="652" cy="742" r="16" fill="#2e9e5b"/>
+</svg>

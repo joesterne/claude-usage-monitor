@@ -1,5 +1,7 @@
 # claude-usage-monitor
 
+<img src="assets/icon.png" width="128" alt="App icon: a usage gauge with a live pulse line">
+
 What it says on the tin, live monitoring of token usage.
 
 A small local tool that receives Claude usage (tokens, model, estimated cost),
@@ -24,6 +26,7 @@ logs every event to SQLite, and shows a live dashboard with pie charts.
 | `limits.py` | Reads your plan limits (5-hour session, weekly) for the dashboard. |
 | `usage_monitor.py` | The server: HTTP endpoint, SQLite logging, dashboard. Also has `send` and `demo` commands. |
 | `claude_code_hook.py` | A Claude Code hook that reads new usage from the session transcript and posts it to the monitor. |
+| `assets/` | App icon (`icon.svg` source, `icon.icns` for the Mac app, `icon.png`). |
 | `env.py` | Loads settings from a `.env` file. |
 | `.env.example` | Template for your `.env` (copy it, then edit). |
 
