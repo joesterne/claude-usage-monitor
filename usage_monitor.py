@@ -445,10 +445,12 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 <div class="card chart"><h2>Tokens by type</h2><div class="pie"><canvas id="c-type" width="400" height="400"></canvas><ul class="legend" id="l-type"></ul></div></div>
 <div class="card chart"><h2>Est. cost by model</h2><div class="pie"><canvas id="c-cost" width="400" height="400"></canvas><ul class="legend" id="l-cost"></ul></div></div>
 </section>
-<section class="card tbl"><h2>Latest events</h2><table><thead><tr><th>Time</th><th>Model</th><th>Input</th>
+<section class="card tbl"><h2>Latest events</h2><table><thead><tr><th>Date &amp; time</th><th>Model</th><th>Input</th>
 <th>Output</th><th>Cache write</th><th>Cache read</th><th>Cost</th></tr></thead><tbody id="recent"></tbody></table></section>
 </main><script>
 const COLORS=["#d97757","#6a9bcc","#788c5d","#c9a227","#9b6bb3","#4fa3a5","#c45a7a","#8a7f72"];
+const when=t=>{const d=new Date(t),o={month:"short",day:"numeric",hour:"numeric",minute:"2-digit",second:"2-digit"};
+  if(d.getFullYear()!==new Date().getFullYear())o.year="numeric";return d.toLocaleString(undefined,o);};
 const fmt=n=>(n||0).toLocaleString(), usd=n=>"$"+(n||0).toFixed((n||0)<1?4:2);
 const short=m=>(m||"unknown").replace(/^anthropic\./,"");
 function pie(canvasId,legendId,items,valFmt){
@@ -480,9 +482,9 @@ function render(d){
   const tb=document.getElementById("recent");tb.innerHTML="";
   if(!d.recent.length){tb.innerHTML='<tr><td colspan="7" class="empty">Waiting for usage events…</td></tr>';}
   d.recent.forEach(r=>{const tr=document.createElement("tr");
-    [new Date(r.received_at).toLocaleTimeString(),short(r.model),fmt(r.input_tokens),fmt(r.output_tokens),
+    [when(r.received_at),short(r.model),fmt(r.input_tokens),fmt(r.output_tokens),
      fmt(r.cache_creation_input_tokens),fmt(r.cache_read_input_tokens),usd(r.cost_usd)]
-     .forEach(v=>{const td=document.createElement("td");td.textContent=v;tr.appendChild(td);});tb.appendChild(tr);});}
+     .forEach((v,i)=>{const td=document.createElement("td");td.textContent=v;if(!i)td.style.whiteSpace="nowrap";tr.appendChild(td);});tb.appendChild(tr);});}
 let es;
 function connect(){
   if(es)es.close();const h=document.getElementById("range").value;
