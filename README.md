@@ -7,7 +7,8 @@ logs every event to SQLite, and shows a live dashboard with pie charts.
 
 - **No dependencies.** Python 3.9+ standard library only. No `pip install` to run it (the Mac app build uses PyInstaller).
 - **Push, not poll.** Claude Code (or your own code) sends usage to the monitor
-  over HTTP on `localhost`. Nothing leaves your machine.
+  over HTTP on `localhost`. Your usage log never leaves your machine (see
+  [Plan limits](#plan-limits) for the one outbound call, which you can turn off).
 - **Real time.** The dashboard updates the moment an event arrives (Server-Sent Events).
 - **SQLite log.** Every event lands in `usage.db` next to the script.
 
@@ -19,6 +20,7 @@ logs every event to SQLite, and shows a live dashboard with pie charts.
 |---|---|
 | `app.py` | Standalone app entry point: starts the server, imports past Claude Code usage, opens the dashboard in its own window. Also acts as the hook (`--hook`). |
 | `build_mac.sh` | Builds `Claude Usage Monitor.app` with PyInstaller. |
+| `limits.py` | Reads your plan limits (5-hour session, weekly) for the dashboard. |
 | `usage_monitor.py` | The server: HTTP endpoint, SQLite logging, dashboard. Also has `send` and `demo` commands. |
 | `claude_code_hook.py` | A Claude Code hook that reads new usage from the session transcript and posts it to the monitor. |
 | `env.py` | Loads settings from a `.env` file. |
@@ -46,6 +48,9 @@ default:
 | `USAGE_MONITOR_URL` | `http://HOST:PORT/usage` | Where the hook sends usage. |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects` | Transcripts the app imports on launch. |
 | `USAGE_MONITOR_VERBOSE` | empty | Set to `1` to log every request. |
+| `USAGE_MONITOR_LIMITS` | `auto` | Plan limits panel: `auto`, `manual` or `off` (see [Plan limits](#plan-limits)). |
+| `USAGE_MONITOR_LIMITS_TTL` | `60` | Seconds between checks of your real limits. |
+| `USAGE_MONITOR_LIMIT_5H`, `USAGE_MONITOR_LIMIT_WEEK` | empty | Optional budgets in estimated API dollars. |
 
 Where `.env` is read from, first match wins per setting:
 
@@ -200,6 +205,30 @@ python3 usage_monitor.py send --model claude-sonnet-5-5 --input 800 --output 200
 - **Refresh** re-scans your Claude Code transcripts for anything the hook missed
   (for example sessions that ran while the monitor was closed) and reloads the charts.
 
+## Plan limits
+
+The **Plan limits** panel at the top of the dashboard shows how much of your
+Claude plan's usage limits you've used: the current 5-hour session and the
+weekly limits (all models, and per model where your plan has one), with when
+each one resets. These are the same numbers Claude Code shows under `/usage`.
+
+Where they come from (`USAGE_MONITOR_LIMITS=auto`, the default): the monitor
+reads the sign-in Claude Code already saved on this Mac (the Keychain item
+`Claude Code-credentials`, or `~/.claude/.credentials.json`) and asks
+`api.anthropic.com` for your current usage, at most once a minute. That
+request carries only the sign-in token; nothing from your local log is sent.
+The first time, macOS may ask whether the app can read that Keychain item.
+Choose **Always Allow**. The endpoint isn't a documented public API, so it may
+change; if it stops working, the panel says so and the rest of the dashboard
+is unaffected.
+
+If you'd rather not make that call, set `USAGE_MONITOR_LIMITS=manual` and give
+budgets in `.env`, for example `USAGE_MONITOR_LIMIT_5H=20` and
+`USAGE_MONITOR_LIMIT_WEEK=200` (estimated API dollars). The panel then shows
+your last 5 hours and last 7 days from the local log against those budgets.
+Anthropic doesn't publish plan limits in tokens or dollars, so these are your
+own targets, not your real limits. `USAGE_MONITOR_LIMITS=off` hides the panel.
+
 ## About the cost number
 
 Cost is an **estimate** at Anthropic's first-party API list prices (the
@@ -227,6 +256,7 @@ Table `usage_events` columns: `received_at`, `event_time`, `source`,
 | POST | `/usage` | Log one event or a list |
 | GET | `/api/summary?since=ISO8601` | JSON totals, per-model breakdown, recent events |
 | GET | `/events?since=ISO8601` | Live summary stream (Server-Sent Events) |
+| GET | `/api/limits` | Plan limits for the panel (`?force=1` skips the one-minute cache) |
 | GET | `/health` | `{"ok": true}` |
 | POST | `/api/refresh` | Re-scan Claude Code transcripts for new usage (the dashboard's Refresh button) |
 

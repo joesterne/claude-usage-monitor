@@ -322,6 +322,9 @@ class Handler(BaseHTTPRequestHandler):
             self._stream(params.get("since"))
         elif path == "/api/hook":
             self._send(200, json.dumps({"status": hook_status(self.hook_command)}))
+        elif path == "/api/limits":
+            import limits
+            self._send(200, json.dumps(limits.get(self.store, force=params.get("force") == "1")))
         elif path == "/health":
             self._send(200, '{"ok": true}')
         else:
@@ -425,6 +428,13 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 .ghost{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font:inherit;cursor:pointer}
 .ghost:disabled{opacity:.6;cursor:default}
 .hookbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;flex-wrap:wrap}
+.limits{margin-top:14px}.limits h2{font-size:14px;margin:0 0 10px;display:flex;justify-content:space-between;gap:8px}
+.limits h2 small{color:var(--muted);font-weight:400}
+.lim{margin:10px 0}.lim .top{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.lim .pct{font-weight:600;font-variant-numeric:tabular-nums}.lim .sub{color:var(--muted);font-size:12px;margin-top:3px}
+.track{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
+.fill{height:100%;border-radius:4px;background:#2e9e5b;transition:width .4s}.fill.warn{background:#c9a227}.fill.hot{background:#c0392b}
+.limerr{color:var(--muted);font-size:13px}
 .hookbar button{background:#d97757;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
 </style></head><body><main>
 <header><h1><span id="dot" class="dot"></span>Claude Usage Monitor</h1>
@@ -433,6 +443,8 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 <option value="24" selected>Last 24 hours</option><option value="168">Last 7 days</option></select></label></div></header>
 <div id="hookbar" class="card hookbar" hidden><span id="hooktext"></span>
 <button id="hookbtn">Connect Claude Code</button></div>
+<section id="limits" class="card limits" hidden><h2>Plan limits <small id="lim-src"></small></h2>
+<div id="lim-bars"></div><div id="lim-err" class="limerr" hidden></div></section>
 <section class="stats">
 <div class="card stat"><div class="v" id="s-req">0</div><div class="k">Requests</div></div>
 <div class="card stat"><div class="v" id="s-in">0</div><div class="k">Input tokens</div></div>
@@ -509,7 +521,26 @@ document.getElementById("refresh").onclick=async()=>{
   const b=document.getElementById("refresh");b.disabled=true;b.textContent="Refreshing…";let msg="↻ Refresh";
   try{const r=await fetch("/api/refresh",{method:"POST",headers:{"X-Usage-Monitor":"1"}});const j=await r.json();
     if(r.ok){msg=j.imported?`↻ Refreshed (+${j.imported})`:"↻ Up to date";}else{msg="↻ Refresh failed";}}catch(e){msg="↻ Refresh failed";}
-  connect();hook(false);b.textContent=msg;setTimeout(()=>{b.textContent="↻ Refresh";b.disabled=false;},2500);};
+  connect();hook(false);limits(true);b.textContent=msg;setTimeout(()=>{b.textContent="↻ Refresh";b.disabled=false;},2500);};
+function resetText(t){if(!t)return"";const d=new Date(t),m=Math.round((d-Date.now())/60000);
+  const at=d.toLocaleString(undefined,{weekday:"short",hour:"numeric",minute:"2-digit"});
+  if(m<=0)return"Resets now";if(m<60)return`Resets in ${m} min (${at})`;
+  if(m<1440)return`Resets in ${Math.floor(m/60)} hr ${m%60} min (${at})`;return`Resets ${at}`;}
+async function limits(force){
+  try{const r=await fetch("/api/limits"+(force?"?force=1":""));const d=await r.json();
+  const box=document.getElementById("limits"),bars=document.getElementById("lim-bars"),err=document.getElementById("lim-err");
+  if(d.source==="off"){box.hidden=true;return;}box.hidden=false;bars.innerHTML="";
+  document.getElementById("lim-src").textContent=d.source==="manual"?"your budgets from .env":"from your Claude account";
+  d.limits.forEach(l=>{const p=Math.max(0,l.percent),div=document.createElement("div");div.className="lim";
+    const top=document.createElement("div");top.className="top";const a=document.createElement("span");a.textContent=l.label;
+    const b=document.createElement("span");b.className="pct";b.textContent=Math.round(p)+"% used";top.append(a,b);
+    const tr=document.createElement("div");tr.className="track";const f=document.createElement("div");
+    f.className="fill"+(p>=90?" hot":p>=70?" warn":"");f.style.width=Math.min(100,p)+"%";tr.append(f);
+    const sub=document.createElement("div");sub.className="sub";sub.textContent=[l.detail,resetText(l.resets_at)].filter(Boolean).join(" · ");
+    div.append(top,tr,sub);bars.append(div);});
+  err.hidden=!d.error;err.textContent=d.error||"";
+  if(!d.limits.length&&!d.error){err.hidden=false;err.textContent="No limits to show.";}}catch(e){}}
+limits(false);setInterval(()=>limits(false),60e3);
 document.getElementById("range").onchange=connect;connect();
 setInterval(connect,5*60e3); // refresh the time window now and then
 </script></body></html>
