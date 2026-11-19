@@ -11,6 +11,13 @@ Source, in order:
   2. Manual budgets from .env (USAGE_MONITOR_LIMIT_5H / USAGE_MONITOR_LIMIT_WEEK,
      in estimated API dollars), measured against the local log.
 
+These numbers are account-wide: they include usage from claude.ai chats, the
+desktop and mobile apps, and Claude Code sessions in the cloud or on other
+machines, not only Claude Code on this Mac. Each successful check is saved in
+the limit_snapshots table, so the dashboard can chart account-wide usage over
+time. While the server runs it checks every USAGE_MONITOR_LIMITS_TTL seconds
+in the background, even with the window closed.
+
 Set USAGE_MONITOR_LIMITS=manual to never call the endpoint, or off to hide the
 limits panel.
 """
@@ -158,6 +165,8 @@ def get(store, force=False):
         else:
             out = _from_claude() if mode != "manual" else {"source": "manual", "limits": [], "error": None}
             _cache.update(at=time.time(), data=out)
+            if out["limits"]:
+                record(store, out["limits"])
             out = dict(out)
     if not out["limits"]:
         manual = _from_manual(store)
@@ -165,4 +174,56 @@ def get(store, force=False):
             out = {"source": "manual", "limits": manual,
                    "error": out.get("error") if mode != "manual" else None}
     out["checked_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_cache["at"] or time.time()))
+    if out["source"] == "claude":
+        out["history"] = history(store)
     return out
+
+
+SNAP_SCHEMA = """CREATE TABLE IF NOT EXISTS limit_snapshots (
+    at TEXT NOT NULL, key TEXT NOT NULL, percent REAL NOT NULL, resets_at TEXT);
+CREATE INDEX IF NOT EXISTS idx_limit_snapshots_at ON limit_snapshots(at);"""
+
+
+def record(store, bars):
+    """Save one reading of each window (account-wide usage over time)."""
+    at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with store.lock:
+        store.conn.executescript(SNAP_SCHEMA)
+        store.conn.executemany(
+            "INSERT INTO limit_snapshots (at, key, percent, resets_at) VALUES (?,?,?,?)",
+            [(at, b["key"], b["percent"], b.get("resets_at")) for b in bars])
+        store.conn.commit()
+
+
+def history(store, days=7):
+    """Readings from the last `days`, at most one per window per 10 minutes."""
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - days * 86400))
+    with store.lock:
+        store.conn.executescript(SNAP_SCHEMA)
+        rows = store.conn.execute(
+            "SELECT at, key, percent FROM limit_snapshots WHERE at >= ? ORDER BY at", (since,)).fetchall()
+    out, last = {}, {}
+    for at, key, pct in rows:
+        bucket = at[:15]  # "YYYY-MM-DDTHH:M", i.e. one 10-minute bucket
+        if last.get(key) == bucket:
+            out[key][-1] = [at, pct]
+            continue
+        last[key] = bucket
+        out.setdefault(key, []).append([at, pct])
+    return out
+
+
+def start_polling(store):
+    """Check limits in the background so account-wide history keeps building
+    while the window is closed. Only in auto mode."""
+    if _mode() != "auto":
+        return
+
+    def loop():
+        while True:
+            try:
+                get(store, force=True)
+            except Exception:
+                pass
+            time.sleep(_ttl())
+    threading.Thread(target=loop, daemon=True, name="limits-poll").start()

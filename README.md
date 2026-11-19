@@ -233,6 +233,20 @@ Claude plan's usage limits you've used: the current 5-hour session and the
 weekly limits (all models, and per model where your plan has one), with when
 each one resets. These are the same numbers Claude Code shows under `/usage`.
 
+**These limits are account-wide.** They include everything that counts
+against your plan: chats on claude.ai and in the desktop and mobile apps,
+Claude Code sessions in the cloud, and Claude Code on other computers. That
+makes them the one place the monitor can see your cloud usage. Per-message
+detail for cloud usage isn't available to a local tool: those transcripts
+never reach this Mac. The token and cost charts therefore count only Claude
+Code on this Mac.
+
+While the app runs, it checks your limits once a minute in the background and
+saves each reading in the `limit_snapshots` table. The panel charts the last
+7 days of those readings ("This week" and "Current session"), so you can see
+account-wide usage over time, cloud included. History starts from the first
+check, and gaps appear while the app is closed.
+
 Where they come from (`USAGE_MONITOR_LIMITS=auto`, the default): the monitor
 reads the sign-in Claude Code already saved on this Mac (the Keychain item
 `Claude Code-credentials`, or `~/.claude/.credentials.json`) and asks

@@ -438,6 +438,9 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 .track{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}
 .fill{height:100%;border-radius:4px;background:#2e9e5b;transition:width .4s}.fill.warn{background:#c9a227}.fill.hot{background:#c0392b}
 .limerr{color:var(--muted);font-size:13px}
+.limits .note{color:var(--muted);font-size:12px;margin-top:8px}
+#lim-chart{width:100%;height:120px;display:block}.histhead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;
+font-size:12px;color:var(--muted);margin:14px 0 4px}.histhead i{display:inline-block;width:10px;height:3px;margin:0 4px 2px 10px;vertical-align:middle}
 .est{margin-bottom:10px}.est h2{font-size:14px;margin:0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .est .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
 .est .tile{border:1px solid var(--line);border-radius:8px;padding:10px}
@@ -454,7 +457,12 @@ th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}th
 <div id="hookbar" class="card hookbar" hidden><span id="hooktext"></span>
 <button id="hookbtn">Connect Claude Code</button></div>
 <section id="limits" class="card limits" hidden><h2>Plan limits <small id="lim-src"></small></h2>
-<div id="lim-bars"></div><div id="lim-err" class="limerr" hidden></div></section>
+<div id="lim-bars"></div><div id="lim-err" class="limerr" hidden></div>
+<div id="lim-hist" hidden><div class="histhead"><span>Account-wide usage, last 7 days</span><span class="lg">
+<i style="background:#6a9bcc"></i>This week <i style="background:#d97757"></i>Current session</span></div>
+<canvas id="lim-chart" height="120"></canvas></div>
+<div class="note" id="lim-note" hidden>These limits are shared across your whole Claude account: chats on claude.ai and in the apps,
+Claude Code in the cloud, and other computers. The token and cost numbers below count only Claude Code on this Mac.</div></section>
 <section class="stats">
 <div class="card stat"><div class="v" id="s-req">0</div><div class="k">Requests</div></div>
 <div class="card stat"><div class="v" id="s-in">0</div><div class="k">Input tokens</div></div>
@@ -587,11 +595,27 @@ function drawEst(){const d=EST;if(!d)return;const box=document.getElementById("e
     +". ":"")
     +"Estimates assume you keep the same pace and use API list prices.";}
 document.getElementById("est-basis").onchange=drawEst;window.addEventListener("resize",drawEst);
+let LIMHIST=null;
+function drawHist(){const wrap=document.getElementById("lim-hist"),h=LIMHIST;
+  const series=[["seven_day","#6a9bcc"],["five_hour","#d97757"]].filter(([k])=>h&&h[k]&&h[k].length>1);
+  wrap.hidden=!series.length;if(!series.length)return;
+  const c=document.getElementById("lim-chart"),dpr=window.devicePixelRatio||1;c.width=Math.round(c.clientWidth*dpr);c.height=Math.round(120*dpr);
+  const x=c.getContext("2d");x.scale(dpr,dpr);const W=c.clientWidth,H=120,top=6,bot=16,t1=Date.now(),t0=t1-7*864e5;
+  const X=t=>(t-t0)/(t1-t0)*W,Y=p=>top+(H-top-bot)*(1-Math.min(p,100)/100);
+  const muted=getComputedStyle(document.body).getPropertyValue("--muted")||"#888";
+  x.strokeStyle="rgba(127,127,127,.25)";x.lineWidth=1;[0,50,100].forEach(p=>{x.beginPath();x.moveTo(0,Y(p));x.lineTo(W,Y(p));x.stroke();});
+  series.forEach(([k,col])=>{x.strokeStyle=col;x.lineWidth=1.8;x.beginPath();
+    h[k].forEach(([t,p],i)=>{const px=X(new Date(t)),py=Y(p);i?x.lineTo(px,py):x.moveTo(px,py);});x.stroke();});
+  x.fillStyle=muted;x.font="11px -apple-system,sans-serif";x.textBaseline="bottom";x.textAlign="left";
+  x.fillText(new Date(t0).toLocaleDateString(undefined,{month:"short",day:"numeric"}),0,H);x.textAlign="right";x.fillText("Now",W,H);
+  x.textBaseline="top";x.fillText("100%",W,Y(100)+1);}
+window.addEventListener("resize",drawHist);
 async function limits(force){
   try{const r=await fetch("/api/limits"+(force?"?force=1":""));const d=await r.json();
   const box=document.getElementById("limits"),bars=document.getElementById("lim-bars"),err=document.getElementById("lim-err");
   if(d.source==="off"){box.hidden=true;return;}box.hidden=false;bars.innerHTML="";
-  document.getElementById("lim-src").textContent=d.source==="manual"?"your budgets from .env":"from your Claude account";
+  document.getElementById("lim-src").textContent=d.source==="manual"?"your budgets from .env":"account-wide, from your Claude account";
+  document.getElementById("lim-note").hidden=d.source!=="claude"||!d.limits.length;LIMHIST=d.history||null;drawHist();
   d.limits.forEach(l=>{const p=Math.max(0,l.percent),div=document.createElement("div");div.className="lim";
     const top=document.createElement("div");top.className="top";const a=document.createElement("span");a.textContent=l.label;
     const b=document.createElement("span");b.className="pct";b.textContent=Math.round(p)+"% used";top.append(a,b);
@@ -624,6 +648,8 @@ def make_server(host, port, db, hook_command=None):
     Handler.hook_command = hook_command or default_hook_command()
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
+    import limits
+    limits.start_polling(Handler.store)
     return httpd
 
 
