@@ -382,6 +382,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         last = -1
         try:
+            self.wfile.write(b"retry: 3000\n\n")
             while True:
                 with self.store.changed:
                     if self.store.version == last:
@@ -391,7 +392,9 @@ class Handler(BaseHTTPRequestHandler):
                     last = current
                     msg = "data: " + json.dumps(self.store.summary(since)) + "\n\n"
                 else:
-                    msg = ": keepalive\n\n"
+                    # A named event (not a comment) so the page can see the
+                    # connection is alive and reconnect when these stop.
+                    msg = "event: ping\ndata: {}\n\n"
                 self.wfile.write(msg.encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
@@ -522,12 +525,27 @@ function render(d){
      fmt(r.cache_creation_input_tokens),fmt(r.cache_read_input_tokens),usd(r.cost_usd)]
      .forEach((v,i)=>{const td=document.createElement("td");td.textContent=v;if(!i)td.style.whiteSpace="nowrap";tr.appendChild(td);});tb.appendChild(tr);});}
 let es;
+let lastSeen=0,retryTimer=null;
 function connect(){
-  if(es)es.close();const h=document.getElementById("range").value;
+  clearTimeout(retryTimer);if(es)es.close();const h=document.getElementById("range").value;
   const q=h?"?since="+encodeURIComponent(new Date(Date.now()-h*3600e3).toISOString().slice(0,19)):"";
-  es=new EventSource("/events"+q);const dot=document.getElementById("dot");
-  es.onopen=()=>dot.classList.add("live");es.onerror=()=>dot.classList.remove("live");
-  es.onmessage=e=>render(JSON.parse(e.data));}
+  es=new EventSource("/events"+q);const dot=document.getElementById("dot");lastSeen=Date.now();
+  es.onopen=()=>{lastSeen=Date.now();dot.classList.add("live");};
+  es.onerror=()=>{dot.classList.remove("live");
+    // A closed stream is never retried by the browser; retry it ourselves.
+    if(es.readyState===2){clearTimeout(retryTimer);retryTimer=setTimeout(connect,3000);}};
+  es.addEventListener("ping",()=>{lastSeen=Date.now();dot.classList.add("live");});
+  es.onmessage=e=>{lastSeen=Date.now();dot.classList.add("live");render(JSON.parse(e.data));};}
+// After the Mac sleeps, the live connection can be left half-dead with no error.
+// The server pings every 15 s: if nothing arrives for 40 s, or the clock jumped
+// (the machine was asleep), reconnect and reload everything.
+let lastTick=Date.now();
+function wake(){connect();limits(true);estAt=0;hook(false);}
+setInterval(()=>{const now=Date.now(),slept=now-lastTick>30e3;lastTick=now;
+  if(slept||now-lastSeen>40e3)wake();},5e3);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&Date.now()-lastSeen>20e3)wake();});
+window.addEventListener("focus",()=>{if(Date.now()-lastSeen>20e3)wake();});
+window.addEventListener("online",wake);
 async function hook(post){
   try{const r=await fetch("/api/hook",post?{method:"POST",headers:{"X-Usage-Monitor":"1"}}:{});
   const s=(await r.json()).status;const bar=document.getElementById("hookbar");
